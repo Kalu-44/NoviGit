@@ -1,0 +1,2 @@
+# NoviGit
+za hakaton repo
