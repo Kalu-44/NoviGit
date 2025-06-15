@@ -160,7 +160,12 @@ class DemoTradingBot:
                         instr_id: OrderbookDepth(**depth_data)
                         for instr_id, depth_data in data.get("orderbook_depths", {}).items()
                     }
-                    parsed_candles = CandleDataResponse(**data.get("candles", {}))
+                
+                    candles_data = data.get("candles", {})
+                    parsed_candles = CandleDataResponse(
+                        tradeable=candles_data.get("tradeable", {}),
+                        untradeable=candles_data.get("untradeable", {})
+                    )
 
                     market_data = MarketDataResponse(
                         type=data["type"],
@@ -175,6 +180,7 @@ class DemoTradingBot:
                     print(f"Error: Missing expected key in MarketDataResponse: {e}. Data: {data}")
                 except Exception as e:
                     print(f"Error deserializing MarketDataResponse: {e}. Data: {data}")
+            
 
     def _handle_market_data_update(self, data: MarketDataResponse):
         if self._trade_sequence_triggered:
@@ -421,12 +427,12 @@ class DemoTradingBot:
 
 async def main():
     EXCHANGE_URI = "ws://192.168.100.10:9001/trade"
-    TEAM_SECRET = "82a3cde2-6352-40dd-85fd-924b51c88512"
+    TEAM_SECRET = "YOUR_TEAM_SECRET"
 
     bot = DemoTradingBot(
         EXCHANGE_URI,
         TEAM_SECRET,
-        print_market_data=False
+        print_market_data=True
     )
 
     await bot.connect()
