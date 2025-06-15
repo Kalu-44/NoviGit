@@ -230,6 +230,7 @@ class DemoTradingBot:
                         self._trade_sequence_triggered = True
                         self._instrument_ids.add(instr)
                         asyncio.create_task(self.run_sequence(instr, best_ask))
+                        asyncio.create_task(self.run_sequence(instr, best_bid))
                         prices.clear()
                         return
 
