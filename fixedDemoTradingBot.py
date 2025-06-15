@@ -1,8 +1,10 @@
 import asyncio
 import json
+
+import numpy
 import websockets
 from dataclasses import dataclass, asdict, field
-from typing import Optional, List, Dict, Tuple, Any
+from typing import Optional, List, Dict, Tuple, Any, Deque
 
 InstrumentID_t = str
 Price_t = int
@@ -131,6 +133,7 @@ class DemoTradingBot:
         self._trade_sequence_triggered = False
         self.print_market_data = print_market_data
         self._instrument_ids = set()
+        self.current_prices: Dict[str, Deque[float]] = {}  # ključ: "$CARD", "$JUMP" itd.
 
     async def connect(self):
         self.ws = await websockets.connect(self.uri)
@@ -190,29 +193,53 @@ class DemoTradingBot:
             if instr in self._instrument_ids:
                 continue
 
-            if instr.startswith("$CARD"):
-                asks = list(depths.asks.items())
-                if asks:
-                    price = int(asks[0][0])
-                else:
-                    continue
+            underlying_prefixes = ["$CARD", "$JUMP", "$GARR", "$SIMP", "$LOGN", "$HEST"]
+            if not any(instr.startswith(prefix) for prefix in underlying_prefixes):
+                continue
 
-                try:
-                    expiry = int(instr.split("_")[-1])
-                except ValueError:
-                    print(f"Warning: Could not parse expiry from instrument ID: {instr}")
-                    continue
+            asks = list(depths.asks.items())
+            bids = list(depths.bids.items())
 
-                print(json.dumps({
-                    "new_instrument_to_trade": instr,
-                    "best_ask_price": price,
-                    "expiry": expiry}, indent=2))
+            if not asks or not bids:
+                continue  # Preskoči instrument ako nema ponuda
 
-                self._trade_sequence_triggered = True
-                self._instrument_ids.add(instr)
-                
-                asyncio.create_task(self.run_sequence(instr, price))
-                return
+            best_ask = min(int(price) for price, _ in asks)
+            best_bid = max(int(price) for price, _ in bids)
+            current_price = (best_ask + best_bid)/2.0
+
+            prices = self.current_prices.setdefault(instr, Deque(maxlen=20))
+            prices.append(current_price)
+
+            if len(prices) == 20:
+                sr_vr = sum(prices) / len(prices)
+                varijansa = sum((p - sr_vr) ** 2 for p in prices)/19.0
+                varijansa = numpy.sqrt(varijansa)
+                if (varijansa > best_ask and varijansa > best_bid):
+
+                #print(f"{instr} - Srednja cena: {sr_vr:.2f}, Varijansa: {varijansa:.2f}")
+
+                    try:
+                        expiry = int(instr.split("_")[-1])
+
+                        print(json.dumps({
+                            "new_instrument_to_trade": instr,
+                            "best_ask_price": best_ask,
+                            "expiry": expiry
+                        }, indent=2))
+
+                        self._trade_sequence_triggered = True
+                        self._instrument_ids.add(instr)
+                        asyncio.create_task(self.run_sequence(instr, best_ask))
+                        prices.clear()
+                        return
+
+                    except ValueError:
+                        print(f"Warning: Could not parse expiry from instrument ID: {instr}")
+                        continue
+
+
+
+
 
     async def send(self, payload: BaseMessage, timeout: int = 3):
         global global_user_request_id
@@ -427,7 +454,7 @@ class DemoTradingBot:
 
 async def main():
     EXCHANGE_URI = "ws://192.168.100.10:9001/trade"
-    TEAM_SECRET = "YOUR_TEAM_SECRET"
+    TEAM_SECRET = "82a3cde2-6352-40dd-85fd-924b51c88512"
 
     bot = DemoTradingBot(
         EXCHANGE_URI,
